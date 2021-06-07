@@ -218,8 +218,46 @@ app.delete('/movies/:id', (req, res) => {
 });
 
 //Find movies with a filter string in a titile 
-app.get('/movies/:filter' ,(req, res) => {
+app.get('/moviesByTitle/:filter', (req, res) => {
+    Movie.find(
+        // Use match to filter only the matching entries
+            { title : { "$regex": new RegExp('.*' + req.params.filter + '.*') } },
+            { _id : 0 }
+    ).populate(
+        {
+            path : 'actors',
+            select : 'firstName lastName -_id'
+        }
+    ).populate(
+        {
+            path : 'director',
+            select: 'firstName lastName -_id'
+        }
+    ).then((movieDoc) => {
+        res.send(movieDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
+});
 
+//Find movies with a filter string in a titile 
+app.get('/moviesByTitle2/:filter', (req, res) => {
+    Movie.aggregate([
+        // Use match to filter only the matching entries
+            { $match : { title : { "$regex": new RegExp('.*' + req.params.filter + '.*') } } },
+            { $lookup: { from: 'directors', localField: 'director', foreignField: '_id', as: 'director'} },
+            { $lookup: { from: 'actors', localField: 'actors', foreignField: '_id', as: 'actors'} },
+            { $project : 
+                {
+                    'director.firstName' : 0,
+                    //"release date" : {$substr : ["$releaseDate", 0, 10]}
+                }
+            }
+    ]).then((movieDoc) => {
+        res.send(movieDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
 });
 
 app.get('/movie/:id/stars', (req, res) => {
