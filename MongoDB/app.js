@@ -49,7 +49,7 @@ app.get('/actors/:id', (req, res) => {
 //Get actor with given firstName
 app.get('/actors/actorByFirstName/:firstName', (req, res) => {
     Actor.findOne({
-        'firstName': new RegExp('.*' + req.params.firstName + '.*')
+        'firstName': { $regex: new RegExp('.*' + req.params.firstName + '.*'), $options: "si" }
     }).then((actorDoc) => {
         res.send(actorDoc);
     }).catch((err) => {
@@ -60,7 +60,7 @@ app.get('/actors/actorByFirstName/:firstName', (req, res) => {
 //Get actor with given lastName
 app.get('/actors/actorByLastName/:lastName', (req, res) => {
     Actor.findOne({
-        'lastName': new RegExp('.*' + req.params.lastName + '.*')
+        'lastName': { $regex: new RegExp('.*' + req.params.lastName + '.*'), $options: "si"}
     }).then((actorDoc) => {
         res.send(actorDoc);
     }).catch((err) => {
@@ -117,7 +117,7 @@ app.get('/actors/allActorInfoByMovieTitle/:filter' ,(req, res) => {
     
         // Then use match to filter only the matching entries
         { $match: 
-            { 'topMovies': { "$regex": new RegExp('.*' + req.params.filter + '.*') } }
+            { 'topMovies': { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }
         }
     ]).then((actorDoc) => {
         res.send(actorDoc);
@@ -133,7 +133,7 @@ app.get('/actors/selectedActorInfoByMovieTitle/:filter' ,(req, res) => {
     
         // Then use match to filter only the matching entries
         { $match: 
-            { 'topMovies': { "$regex": new RegExp('.*' + req.params.filter + '.*') } }
+            { 'topMovies': { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }
         },
 
         { $project: {
@@ -169,6 +169,17 @@ app.get('/movies', (req, res) => {
 
 //Get movie with given id
 app.get('/movies/:id', (req, res) => {
+    Movie.findOne({
+        _id: req.params.id
+    }).then((movieDoc) => {
+        res.send(movieDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
+});
+
+//Get movie with given id
+app.get('/getMovieWithId/:id', (req, res) => {
     Movie.findOne({
         _id: req.params.id
     }).then((movieDoc) => {
@@ -217,16 +228,16 @@ app.delete('/movies/:id', (req, res) => {
     });
 });
 
-//Find movies with a filter string in a titile 
+//Find movies with a filter string in a title 
 app.get('/moviesByTitle/:filter', (req, res) => {
     Movie.find(
         // Use match to filter only the matching entries
-            { title : { "$regex": new RegExp('.*' + req.params.filter + '.*') } },
+            { title : { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } },
             { _id : 0 }
     ).populate(
         {
             path : 'actors',
-            select : 'firstName lastName -_id'
+            select : 'firstName lastName -_id',
         }
     ).populate(
         {
@@ -240,28 +251,42 @@ app.get('/moviesByTitle/:filter', (req, res) => {
     });
 });
 
-//Find movies with a filter string in a titile 
-app.get('/moviesByTitle2/:filter', (req, res) => {
-    Movie.aggregate([
-        // Use match to filter only the matching entries
-            { $match : { title : { "$regex": new RegExp('.*' + req.params.filter + '.*') } } },
-            { $lookup: { from: 'directors', localField: 'director', foreignField: '_id', as: 'director'} },
-            { $lookup: { from: 'actors', localField: 'actors', foreignField: '_id', as: 'actors'} },
-            { $project : 
-                {
-                    'director.firstName' : 0,
-                    //"release date" : {$substr : ["$releaseDate", 0, 10]}
-                }
-            }
-    ]).then((movieDoc) => {
-        res.send(movieDoc);
+//Get avg stars for movie with a given id
+// app.get('/movie/:id/stars', (req, res) => {
+// });
+
+
+//Get avg stars for movie with a given id
+app.get('/starsByMovieId/:id', (req, res) => {
+    const mongoose = require("mongoose");
+    Review.aggregate([
+        { $group: { _id: "$movieID", avgStars: { $avg: "$stars" } } },
+        { $match : { _id : new mongoose.Types.ObjectId(req.params.id)}},
+        { $project: { _id: 0 }}
+    ]).then((reviewDoc) => {
+        res.send(reviewDoc);
     }).catch((err) => {
         res.send(err);
     });
 });
 
-app.get('/movie/:id/stars', (req, res) => {
-
+app.get('/starsByMovieTitle/:filter', (req, res) => {
+    const mongoose = require("mongoose");
+    Review.aggregate([
+        { $lookup : { 
+            from: 'movies', 
+            localField: 'movieID', foreignField: '_id', 
+            as: 'movie'} 
+        },
+        { $unwind: '$movie'},
+        { $match: { 'movie.title' : { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }},
+        { $group: { _id: "$movie._id", avgStars: { $avg: "$stars" } } },
+        { $project: { _id: 0, avgStars : 1}}
+    ]).then((reviewDoc) => {
+        res.send(reviewDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
 });
 
 
