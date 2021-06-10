@@ -68,6 +68,19 @@ app.get('/actors/actorByLastName/:lastName', (req, res) => {
     });
 });
 
+//Find actors with a filter string in a lastname 
+app.get('/actorsByLastname/:filter', (req, res) => {
+    Actor.find(
+        // Use match to filter only the matching entries
+            { lastName : { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } },
+            { _id : 0 }
+    ).then((movieDoc) => {
+        res.send(movieDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
+});
+
 // Add actor to database
 app.post('/actors', (req, res) => {
     let firstName = req.body.firstName;
@@ -288,7 +301,7 @@ app.get('/getTopNMovies/:N', (req, res) => {
         }
         },
         { $unwind: '$movie' },
-        { $project: { title : "$movie.title", avgStars : "$avgStars"} },
+        { $project: { title : "$movie.title", avgStars : "$avgStars", img: "$movie.img", description:"$movie.description"} },
         { $project: { _id : 0 }},
         { $sort: { avgStars: -1 }},
         { $limit: parseInt(req.params.N) }
@@ -400,6 +413,19 @@ app.delete('/directors/:id', (req, res) => {
     });
 });
 
+//Find directors with a filter string in a lastname 
+app.get('/directorsByLastname/:filter', (req, res) => {
+    Director.find(
+        // Use match to filter only the matching entries
+            { lastName : { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } },
+            { _id : 0 }
+    ).then((movieDoc) => {
+        res.send(movieDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
+});
+
 
 // REVIEWS
 
@@ -466,6 +492,26 @@ app.delete('/reviews/:id', (req, res) => {
         _id: req.params.id
     }).then((reviewDoc) => {
         res.send(reviewDoc);
+    });
+});
+
+//Get N users with the biggest no. of review posts
+app.get('/getMostActiveUser/:N', (req, res) => {
+    Review.aggregate([
+        { $group: { _id: "$author", reviewCount: {$sum: 1}} },
+        { $sort: { reviewCount: -1}},
+        { $lookup: {
+            from: 'users', 
+            localField: '_id', foreignField: '_id', 
+            as: 'user'
+       }},
+       { $unwind: '$user'},
+       { $project: { "reviewCount" : "$reviewCount", "userEmail" : "$user.email", _id : 0}},
+       { $limit: parseInt(req.params.N)}
+    ]).then((reviewDoc) => {
+        res.send(reviewDoc);
+    }).catch((err) => {
+        res.send(err);
     });
 });
 
