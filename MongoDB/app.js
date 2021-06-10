@@ -77,6 +77,7 @@ app.post('/actors', (req, res) => {
     let movieNumber = req.body.movieNumber;
     let topMovies = req.body.topMovies;
     let description = req.body.descripion;
+    let img = req.body.img;
     let newActor = new Actor({
         firstName,
         lastName,
@@ -84,7 +85,8 @@ app.post('/actors', (req, res) => {
         dateOfDeath,
         movieNumber,
         topMovies,
-        description
+        description,
+        img
     });
     newActor.save().then((actorDoc) => {
         res.send(actorDoc);
@@ -109,15 +111,21 @@ app.delete('/actors/:id', (req, res) => {
     });
 });
 
-//Find actors with a filter string in a title 
+//Get full actor info with a filter string in a title (too much info)
 app.get('/actors/allActorInfoByMovieTitle/:filter' ,(req, res) => {
     Actor.aggregate([
-        // Unwind the topMovies array
         { $unwind: "$topMovies" },
-    
-        // Then use match to filter only the matching entries
+
+         { $lookup: {
+             from: 'movies', 
+             localField: 'topMovies', foreignField: '_id', 
+             as: 'topMovies'
+        }},
+
+        { $unwind: '$topMovies' },
+
         { $match: 
-            { 'topMovies': { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }
+            { 'topMovies.title': { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }
         }
     ]).then((actorDoc) => {
         res.send(actorDoc);
@@ -126,21 +134,29 @@ app.get('/actors/allActorInfoByMovieTitle/:filter' ,(req, res) => {
     });
 });
 
+
+// Get reasonable info (use rather this one) with a filter string in the title
 app.get('/actors/selectedActorInfoByMovieTitle/:filter' ,(req, res) => {
     Actor.aggregate([
-        // Unwind the topMovies array
         { $unwind: "$topMovies" },
-    
-        // Then use match to filter only the matching entries
+
+         { $lookup: {
+             from: 'movies', 
+             localField: 'topMovies', foreignField: '_id', 
+             as: 'topMovies'
+        }},
+
+        { $unwind: '$topMovies' },
+
         { $match: 
-            { 'topMovies': { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }
+            { 'topMovies.title': { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }
         },
 
         { $project: {
             _id: 0,
             "First name": "$firstName", 
             "Last name": "$lastName", 
-            "Birthday": {$substr: ["$birthDay", 0, 10]},
+            "Birthday": {$substr: ["$dateOfBirth", 0, 10]},
             "Passed away on" :
                 { $cond: {
                     if: { $not: ['$dateOfDeath']},
@@ -197,13 +213,15 @@ app.post('/movies', (req, res) => {
     let genre = req.body.genre;
     let releaseDate = req.body.releaseDate;
     let description = req.body.description;
+    let img = req.body.img;
     let newMovie = new Movie({
         title,
         director,
         actors,
         genre,
         releaseDate,
-        description
+        description,
+        img
     });
     newMovie.save().then((movieDoc) => {
         res.send(movieDoc);
@@ -251,9 +269,35 @@ app.get('/moviesByTitle/:filter', (req, res) => {
     });
 });
 
-//Get avg stars for movie with a given id
-// app.get('/movie/:id/stars', (req, res) => {
-// });
+//Get top N movies (N - number of top movies)
+app.get('/getTopNMovies/:N', (req, res) => {
+    const mongoose = require("mongoose");
+    Review.aggregate([
+        { $lookup : { 
+            from: 'movies', 
+            localField: 'movieID', foreignField: '_id', 
+            as: 'movie'} 
+        },
+        { $unwind: '$movie'},
+        { $group: { _id: "$movie._id", avgStars: { $avg: "$stars" } } },
+        { $project: { avgStars : 1}},
+        { $lookup: {
+            from: 'movies', 
+            localField: '_id', foreignField: '_id', 
+            as: 'movie'
+        }
+        },
+        { $unwind: '$movie' },
+        { $project: { title : "$movie.title", avgStars : "$avgStars"} },
+        { $project: { _id : 0 }},
+        { $sort: { avgStars: -1 }},
+        { $limit: parseInt(req.params.N) }
+    ]).then((reviewDoc) => {
+        res.send(reviewDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
+});
 
 
 //Get avg stars for movie with a given id
@@ -283,37 +327,6 @@ app.get('/starsByMovieTitle/:filter', (req, res) => {
         { $match: { 'movie.title' : { "$regex": new RegExp('.*' + req.params.filter + '.*'), $options: "si" } }},
         { $group: { _id: "$movie._id", avgStars: { $avg: "$stars" } } },
         { $project: { _id: 0, avgStars : 1}}
-    ]).then((reviewDoc) => {
-        res.send(reviewDoc);
-    }).catch((err) => {
-        res.send(err);
-    });
-});
-
-
-//Get top N movies (N - number of top movies)
-app.get('/getTopNMovies/:N', (req, res) => {
-    const mongoose = require("mongoose");
-    Review.aggregate([
-        { $lookup : { 
-            from: 'movies', 
-            localField: 'movieID', foreignField: '_id', 
-            as: 'movie'} 
-        },
-        { $unwind: '$movie'},
-        { $group: { _id: "$movie._id", avgStars: { $avg: "$stars" } } },
-        { $project: { avgStars : 1}},
-        { $lookup: {
-            from: 'movies', 
-            localField: '_id', foreignField: '_id', 
-            as: 'movie'
-        }
-        },
-        { $unwind: '$movie' },
-        { $project: { title : "$movie.title", avgStars : "$avgStars"} },
-        { $project: { _id : 0 }},
-        { $sort: { avgStars: -1 }},
-        { $limit: parseInt(req.params.N) }
     ]).then((reviewDoc) => {
         res.send(reviewDoc);
     }).catch((err) => {
@@ -353,6 +366,7 @@ app.post('/directors', (req, res) => {
     let movieNumber = req.body.movieNumber;
     let topMovies = req.body.topMovies;
     let description = req.body.descripion;
+    let img = req.body.img;
     let newDirector = new Director({
         firstName,
         lastName,
@@ -360,7 +374,8 @@ app.post('/directors', (req, res) => {
         dateOfDeath,
         movieNumber,
         topMovies,
-        description
+        description,
+        img
     });
     newDirector.save().then((directorDoc) => {
         res.send(directorDoc);
@@ -408,6 +423,17 @@ app.get('/reviews/:id', (req, res) => {
     });
 });
 
+//Get review with given movie id
+app.get('/movieReviews/:id', (req, res) => {
+    Review.find({
+        movieID: req.params.id
+    }).then((reviewDoc) => {
+        res.send(reviewDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
+});
+
 //Add review to database
 app.post('/reviews', (req, res) => {
     let author = req.body.author;
@@ -445,6 +471,17 @@ app.delete('/reviews/:id', (req, res) => {
 
 
 // USER
+
+//Get user with specified id
+app.get('/users/:id', (req, res) => {
+    User.findOne({
+        _id: req.params.id
+    }).then((reviewDoc) => {
+        res.send(reviewDoc);
+    }).catch((err) => {
+        res.send(err);
+    });
+});
 
 //User sign up
 app.post('/users', (req, res) => {
